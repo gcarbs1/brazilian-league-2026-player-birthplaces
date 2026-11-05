@@ -1,0 +1,6 @@
+ipykernel>=7.3,<8
+jupyter>=1.1,<2
+pandas>=3.0,<4
+requests>=2.34,<3
+tqdm>=4.69,<5
+

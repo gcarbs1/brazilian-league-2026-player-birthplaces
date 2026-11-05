@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Mapa dos locais de nascimento dos jogadores brasileiros do Brasileirão 2026.">
+    <title>Locais de nascimento dos jogadores do Brasileirão</title>
+    <link rel="stylesheet" href="html/styles.css">
+  </head>
+  <body>
+    <main class="page">
+      <aside class="intro">
+        <div class="intro__content">
+          <h1>
+            <span>Locais de</span>
+            <em>nascimento</em>
+            <small>dos jogadores do Brasileirão</small>
+          </h1>
+
+          <p class="deck">
+            Explore os municípios de nascimento dos jogadores brasileiros nos elencos do Brasileirão Série A 2026.
+          </p>
+
+          <form class="filters" aria-label="Filtros do mapa">
+            <label>
+              <span>Clube</span>
+              <select id="club-filter">
+                <option value="all">Todos os clubes</option>
+              </select>
+            </label>
+            <label>
+              <span>Buscar jogador ou cidade</span>
+              <input id="search" type="search" autocomplete="off">
+            </label>
+          </form>
+        </div>
+
+        <div class="intro__footer">
+          <div class="legend" aria-label="Legenda dos círculos proporcionais">
+            <span class="legend__small"></span>
+            <span class="legend__large"></span>
+            <p>Área do círculo = número de jogadores</p>
+          </div>
+        </div>
+      </aside>
+
+      <section class="map-panel" aria-labelledby="map-description">
+        <svg id="map" role="img" aria-labelledby="map-description"></svg>
+        <p class="sr-only" id="map-description">Mapa do Brasil com círculos proporcionais ao número de jogadores nascidos em cada município.</p>
+
+        <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+        <div class="empty-state" id="empty-state" hidden>Nenhum resultado para esses filtros.</div>
+
+        <aside class="city-sheet" id="city-sheet" aria-hidden="true" aria-labelledby="city-title">
+          <header class="city-sheet__header">
+            <button id="close-sheet" type="button" aria-label="Fechar lista de jogadores">×</button>
+          </header>
+          <h2 id="city-title"></h2>
+          <p class="city-sheet__count" id="city-count"></p>
+          <div class="city-sheet__rule" aria-hidden="true"></div>
+          <div class="player-list" id="player-list"></div>
+        </aside>
+      </section>
+    </main>
+
+    <noscript>Esta visualização precisa de JavaScript.</noscript>
+    <script src="html/vendor/d3.v7.min.js"></script>
+    <script src="html/data/brazil-states.js"></script>
+    <script src="html/data/birthplaces.js"></script>
+    <script src="html/app.js"></script>
+  </body>
+</html>
