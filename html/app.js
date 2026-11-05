@@ -64,6 +64,7 @@
     panel: document.querySelector(".map-panel"),
     club: document.querySelector("#club-filter"),
     search: document.querySelector("#search"),
+    clearSearch: document.querySelector("#clear-search"),
     tooltip: document.querySelector("#tooltip"),
     empty: document.querySelector("#empty-state"),
     sheet: document.querySelector("#city-sheet"),
@@ -97,6 +98,15 @@
 
   ui.search.addEventListener("input", (event) => {
     state.query = normalize(event.target.value);
+    ui.clearSearch.hidden = !event.target.value;
+    draw();
+  });
+
+  ui.clearSearch.addEventListener("click", () => {
+    ui.search.value = "";
+    state.query = "";
+    ui.clearSearch.hidden = true;
+    ui.search.focus();
     draw();
   });
 
