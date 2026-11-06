@@ -52,11 +52,11 @@
   ]);
 
   const annotationLayout = new Map([
-    ["Fortaleza|CE", -36],
-    ["Salvador|BA", -8],
-    ["Belo Horizonte|MG", -52],
-    ["Rio de Janeiro|RJ", 46],
-    ["São Paulo|SP", 102],
+    ["Fortaleza|CE", -20],
+    ["Salvador|BA", -4],
+    ["Belo Horizonte|MG", -32],
+    ["Rio de Janeiro|RJ", 28],
+    ["São Paulo|SP", 72],
   ]);
 
   const players = source.players.map((player) => ({
@@ -72,6 +72,12 @@
       player.club,
     ].join(" ")),
   }));
+
+  const supportedStates = new Set(players.map((player) => player.birth_state_code));
+  const requestedUf = new URLSearchParams(window.location.search).get("uf");
+  const initialUf = supportedStates.has(requestedUf) ? requestedUf : null;
+  const municipalityLoads = new Map();
+  window.BRAZIL_MUNICIPALITIES = window.BRAZIL_MUNICIPALITIES || {};
 
   const ui = {
     svg: d3.select("#map"),
@@ -93,21 +99,13 @@
     playerList: document.querySelector("#player-list"),
   };
 
-  const requestedUf = new URLSearchParams(window.location.search).get("uf");
-  const initialUf = brazil.features.some((feature) => feature.properties.uf === requestedUf)
-    ? requestedUf
-    : null;
-
   const state = {
     club: "all",
     query: "",
-    selectedUf: initialUf,
+    selectedUf: null,
     selectedId: null,
+    loadingUf: null,
   };
-
-  const allCities = groupCities(players);
-  const maxCount = d3.max(allCities, (city) => city.count) || 1;
-  const radius = d3.scaleSqrt().domain([0, maxCount]).range([0, 39]);
 
   [...new Set(players.map((player) => player.club))]
     .sort((a, b) => a.localeCompare(b, "pt-BR"))
@@ -148,9 +146,10 @@
   }).observe(ui.panel);
 
   draw();
+  if (initialUf) enterState(initialUf, false);
 
   function normalize(value) {
-    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").trim();
+    return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR").trim();
   }
 
   function filteredPlayers() {
@@ -167,7 +166,6 @@
         id: items[0].municipality_id,
         city: items[0].birth_city,
         uf: items[0].birth_state_code,
-        region: items[0].birth_region,
         latitude: items[0].latitude,
         longitude: items[0].longitude,
         count: items.length,
@@ -190,11 +188,8 @@
       : null;
     const selectedCity = cities.find((city) => city.id === state.selectedId);
     const showAnnotations = width >= 720 && !selectedFeature && state.club === "all" && !state.query;
-    const labelColumn = showAnnotations ? Math.min(190, width * 0.23) : 0;
-    const plotRight = Math.max(250, width - labelColumn - 40);
-    const geography = selectedFeature || brazil;
-    const features = selectedFeature ? [selectedFeature] : brazil.features;
-    const stateCounts = d3.rollup(visiblePlayers, (items) => items.length, (player) => player.birth_state_code);
+    const labelColumn = showAnnotations ? Math.min(125, width * 0.17) : 0;
+    const plotRight = Math.max(250, width - labelColumn - 28);
 
     if (state.selectedId && !selectedCity) closeCity(false);
     if (selectedCity) renderCitySheet(selectedCity);
@@ -204,96 +199,128 @@
     ui.empty.hidden = cities.length > 0;
     ui.svg.attr("viewBox", "0 0 " + width + " " + height).selectAll("*").remove();
 
-    const projection = d3.geoMercator().fitExtent(
-      [[52, 94], [plotRight, height - 52]],
-      geography,
-    );
-    const path = d3.geoPath(projection);
-
-    const stateLayer = ui.svg.append("g").attr("class", "states");
-    stateLayer.selectAll("path.state")
-      .data(features, (feature) => feature.properties.uf)
-      .join("path")
-      .attr("class", selectedFeature ? "state is-selected" : "state is-interactive")
-      .attr("d", path)
-      .attr("tabindex", selectedFeature ? null : 0)
-      .attr("role", selectedFeature ? null : "button")
-      .attr("aria-label", (feature) => {
-        const count = stateCounts.get(feature.properties.uf) || 0;
-        return feature.properties.name + ": " + count + " " + word(count, "jogador", "jogadores") + ". Clique para ver os municípios.";
-      })
-      .on("pointerenter", (event, feature) => {
-        if (!selectedFeature) focusState(event, feature, stateCounts);
-      })
-      .on("pointermove", (event) => {
-        if (!selectedFeature) moveTooltip(event);
-      })
-      .on("pointerleave", () => {
-        if (!selectedFeature) hideTooltip();
-      })
-      .on("focus", (event, feature) => {
-        if (!selectedFeature) focusState(event, feature, stateCounts);
-      })
-      .on("blur", hideTooltip)
-      .on("click", (event, feature) => {
-        if (selectedFeature) return;
-        event.stopPropagation();
-        selectState(feature);
-      })
-      .on("keydown", (event, feature) => {
-        if (selectedFeature || (event.key !== "Enter" && event.key !== " ")) return;
-        event.preventDefault();
-        selectState(feature);
-      });
-
-    if (showAnnotations) {
-      drawAnnotations(cities, projection, width, plotRight, height);
-    }
-
-    const cityLayer = ui.svg.append("g")
-      .attr("class", "cities" + (state.selectedId ? " has-selection" : ""));
-
-    cityLayer.selectAll("circle.city")
-      .data(cities.slice().sort((a, b) => d3.descending(a.count, b.count)), (city) => city.id)
-      .join("circle")
-      .attr("class", (city) => "city" + (city.id === state.selectedId ? " is-selected" : ""))
-      .attr("cx", (city) => projection([city.longitude, city.latitude])[0])
-      .attr("cy", (city) => projection([city.longitude, city.latitude])[1])
-      .attr("r", (city) => Math.max(2.3, radius(city.count)))
-      .attr("tabindex", 0)
-      .attr("role", "button")
-      .attr("aria-label", (city) =>
-        city.city + ", " + city.uf + ": " + city.count + " " +
-        word(city.count, "jogador", "jogadores") + ". Clique para ver os nomes.",
-      )
-      .on("pointerenter", focusCity)
-      .on("pointermove", moveTooltip)
-      .on("pointerleave", unfocusCity)
-      .on("focus", focusCity)
-      .on("blur", unfocusCity)
-      .on("click", (event, city) => {
-        event.stopPropagation();
-        selectCity(city);
-      })
-      .on("keydown", (event, city) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          selectCity(city);
-        }
-      });
-
-    if (selectedCity) {
-      const [x, y] = projection([selectedCity.longitude, selectedCity.latitude]);
-      cityLayer.insert("circle", ":first-child")
-        .attr("class", "selection-ring")
-        .attr("cx", x)
-        .attr("cy", y)
-        .attr("r", Math.max(2.3, radius(selectedCity.count)) + 8);
+    if (selectedFeature && window.BRAZIL_MUNICIPALITIES[state.selectedUf]) {
+      drawMunicipalityView(selectedFeature, cities, width, height, plotRight);
+    } else {
+      drawNationalView(visiblePlayers, cities, width, height, plotRight, showAnnotations);
     }
 
     ui.svg.on("click", () => {
       if (state.selectedId) closeCity();
     });
+  }
+
+  function drawNationalView(visiblePlayers, cities, width, height, plotRight, showAnnotations) {
+    const projection = d3.geoMercator().fitExtent([[52, 94], [plotRight, height - 52]], brazil);
+    const path = d3.geoPath(projection);
+    const stateCounts = d3.rollup(visiblePlayers, (items) => items.length, (player) => player.birth_state_code);
+    const maxCount = d3.max(stateCounts.values()) || 1;
+    const color = d3.scaleSqrt().domain([0, maxCount]).range(["#dbe5e9", "#1c4f70"]);
+
+    ui.svg.append("g")
+      .attr("class", "states")
+      .selectAll("path.state")
+      .data(brazil.features, (feature) => feature.properties.uf)
+      .join("path")
+      .attr("class", (feature) => {
+        const count = stateCounts.get(feature.properties.uf) || 0;
+        return "state" + (count ? " is-interactive has-data" : "");
+      })
+      .style("--fill", (feature) => {
+        const count = stateCounts.get(feature.properties.uf) || 0;
+        return count ? color(count) : "#f7f6f1";
+      })
+      .attr("d", path)
+      .attr("tabindex", (feature) => stateCounts.get(feature.properties.uf) ? 0 : null)
+      .attr("role", (feature) => stateCounts.get(feature.properties.uf) ? "button" : null)
+      .attr("aria-label", (feature) => {
+        const count = stateCounts.get(feature.properties.uf) || 0;
+        return feature.properties.name + ": " + count + " " + word(count, "jogador", "jogadores") +
+          (count ? ". Clique para ver os municípios." : ".");
+      })
+      .on("pointerenter", (event, feature) => {
+        const count = stateCounts.get(feature.properties.uf) || 0;
+        focusState(event, feature, count);
+      })
+      .on("pointermove", moveTooltip)
+      .on("pointerleave", hideTooltip)
+      .on("focus", (event, feature) => {
+        const count = stateCounts.get(feature.properties.uf) || 0;
+        focusState(event, feature, count);
+      })
+      .on("blur", hideTooltip)
+      .on("click", (event, feature) => {
+        if (!stateCounts.get(feature.properties.uf)) return;
+        event.stopPropagation();
+        enterState(feature.properties.uf, true);
+      })
+      .on("keydown", (event, feature) => {
+        if (!stateCounts.get(feature.properties.uf) || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        enterState(feature.properties.uf, true);
+      });
+
+    if (showAnnotations) {
+      drawAnnotations(cities, projection, width, plotRight, height);
+    }
+  }
+
+  function drawMunicipalityView(selectedFeature, cities, width, height, plotRight) {
+    const municipalities = window.BRAZIL_MUNICIPALITIES[state.selectedUf];
+    const projection = d3.geoMercator().fitExtent([[52, 94], [plotRight, height - 52]], selectedFeature);
+    const path = d3.geoPath(projection);
+    const citiesById = new Map(cities.map((city) => [city.id, city]));
+    const maxCount = d3.max(cities, (city) => city.count) || 1;
+    const color = d3.scaleSqrt().domain([0, maxCount]).range(["#dbe5e9", "#1c4f70"]);
+
+    ui.svg.append("g")
+      .attr("class", "municipalities" + (state.selectedId ? " has-selection" : ""))
+      .selectAll("path.municipality")
+      .data(municipalities.features, (feature) => String(feature.properties.codarea))
+      .join("path")
+      .attr("class", (feature) => {
+        const city = citiesById.get(String(feature.properties.codarea));
+        const selected = city && city.id === state.selectedId;
+        return "municipality" + (city ? " has-data" : "") + (selected ? " is-selected" : "");
+      })
+      .style("--fill", (feature) => {
+        const city = citiesById.get(String(feature.properties.codarea));
+        return city ? color(city.count) : "#f7f6f1";
+      })
+      .attr("d", path)
+      .attr("tabindex", (feature) => citiesById.has(String(feature.properties.codarea)) ? 0 : null)
+      .attr("role", (feature) => citiesById.has(String(feature.properties.codarea)) ? "button" : null)
+      .attr("aria-label", (feature) => municipalityAria(feature, citiesById))
+      .on("pointerenter", (event, feature) => focusMunicipality(event, feature, citiesById))
+      .on("pointermove", moveTooltip)
+      .on("pointerleave", hideTooltip)
+      .on("focus", (event, feature) => focusMunicipality(event, feature, citiesById))
+      .on("blur", hideTooltip)
+      .on("click", (event, feature) => {
+        const city = citiesById.get(String(feature.properties.codarea));
+        if (!city) return;
+        event.stopPropagation();
+        selectCity(city);
+      })
+      .on("keydown", (event, feature) => {
+        const city = citiesById.get(String(feature.properties.codarea));
+        if (!city || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        selectCity(city);
+      });
+
+    ui.svg.append("path")
+      .datum(selectedFeature)
+      .attr("class", "state-outline")
+      .attr("d", path);
+  }
+
+  function municipalityAria(feature, citiesById) {
+    const city = citiesById.get(String(feature.properties.codarea));
+    const name = feature.properties.name;
+    if (!city) return name + ": nenhum jogador nos filtros atuais.";
+    return name + ": " + city.count + " " + word(city.count, "jogador", "jogadores") +
+      ". Clique para ver os nomes.";
   }
 
   function updateSummary(scopedPlayers, cities, selectedFeature) {
@@ -305,32 +332,21 @@
 
     ui.viewTitle.textContent = placeName;
     ui.scopeSummary.textContent = playerCount + " " + playerLabel + " · " + cityCount + " " + cityLabel;
-    ui.mapHint.textContent = selectedFeature ? "Selecione um município" : "Selecione um estado";
+    ui.mapHint.textContent = state.loadingUf
+      ? "Carregando municípios"
+      : selectedFeature ? "Selecione um município" : "Selecione um estado";
     ui.backState.hidden = !selectedFeature;
-    ui.mapDescription.textContent =
-      "Mapa de " + placeName + " com " + cityCount + " " + cityLabel +
-      " e círculos proporcionais aos " + playerCount + " " + playerLabel + " exibidos.";
+    ui.mapDescription.textContent = selectedFeature
+      ? "Mapa de " + placeName + " dividido em municípios. A intensidade da cor representa o número de jogadores."
+      : "Mapa do Brasil. A intensidade da cor de cada estado representa o número de jogadores.";
   }
 
   function drawAnnotations(cities, projection, width, plotRight, height) {
     const annotated = cities.filter((city) => annotationLayout.has(city.city + "|" + city.uf));
     const labels = ui.svg.append("g").attr("class", "map-labels");
-    const labelX = width - 28;
-    const connectorX = labelX - 142;
-    const elbowX = plotRight + 14;
-
-    const defs = ui.svg.append("defs");
-    defs.append("marker")
-      .attr("id", "annotation-arrow")
-      .attr("viewBox", "0 0 8 8")
-      .attr("refX", 7)
-      .attr("refY", 4)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,0 L8,4 L0,8 Z")
-      .attr("fill", "#1c4f70");
+    const labelX = Math.min(width - 16, plotRight + 108);
+    const connectorX = labelX - 95;
+    const elbowX = plotRight + 5;
 
     annotated.forEach((city) => {
       const [x, y] = projection([city.longitude, city.latitude]);
@@ -344,8 +360,7 @@
           connectorX + "," + (textY - 3) + " " +
           elbowX + "," + (textY - 3) + " " +
           x + "," + y,
-        )
-        .attr("marker-end", "url(#annotation-arrow)");
+        );
 
       label.append("text")
         .attr("x", labelX)
@@ -359,16 +374,52 @@
         .attr("y", textY + 12)
         .attr("text-anchor", "end")
         .text(city.count + " " + word(city.count, "jogador", "jogadores"));
+
+      label.append("circle")
+        .attr("class", "annotation-dot")
+        .attr("cx", x)
+        .attr("cy", y)
+        .attr("r", 3);
     });
   }
 
-  function selectState(feature) {
+  async function enterState(uf, focusBack) {
+    if (!supportedStates.has(uf) || state.loadingUf) return;
     hideTooltip();
     closeCity(false);
-    state.selectedUf = feature.properties.uf;
-    syncUrl(state.selectedUf);
-    draw();
-    requestAnimationFrame(() => ui.backState.focus());
+    state.loadingUf = uf;
+    ui.mapHint.textContent = "Carregando municípios";
+
+    try {
+      await loadMunicipalities(uf);
+      state.selectedUf = uf;
+      syncUrl(uf);
+      draw();
+      if (focusBack) requestAnimationFrame(() => ui.backState.focus());
+    } catch (error) {
+      console.error(error);
+      ui.mapHint.textContent = "Não foi possível carregar os municípios";
+    } finally {
+      state.loadingUf = null;
+    }
+  }
+
+  function loadMunicipalities(uf) {
+    if (window.BRAZIL_MUNICIPALITIES[uf]) {
+      return Promise.resolve(window.BRAZIL_MUNICIPALITIES[uf]);
+    }
+    if (municipalityLoads.has(uf)) return municipalityLoads.get(uf);
+
+    const promise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "html/data/municipalities/" + uf + ".js";
+      script.onload = () => resolve(window.BRAZIL_MUNICIPALITIES[uf]);
+      script.onerror = () => reject(new Error("Falha ao carregar a malha municipal de " + uf));
+      document.head.append(script);
+    });
+
+    municipalityLoads.set(uf, promise);
+    return promise;
   }
 
   function exitState() {
@@ -439,31 +490,21 @@
     ui.sheet.scrollTop = 0;
   }
 
-  function focusState(event, feature, stateCounts) {
-    const count = stateCounts.get(feature.properties.uf) || 0;
+  function focusState(event, feature, count) {
     showTooltip(
       event,
       feature.properties.name,
-      count + " " + word(count, "jogador", "jogadores") + " · abrir estado",
+      count + " " + word(count, "jogador", "jogadores") + (count ? " · abrir estado" : ""),
     );
   }
 
-  function focusCity(event, city) {
-    const circle = event.currentTarget;
-    circle.classList.add("is-hovered");
-    circle.parentElement.classList.add("has-hover");
+  function focusMunicipality(event, feature, citiesById) {
+    const city = citiesById.get(String(feature.properties.codarea));
     showTooltip(
       event,
-      city.city + ", " + city.uf,
-      city.count + " " + word(city.count, "jogador", "jogadores"),
+      feature.properties.name,
+      city ? city.count + " " + word(city.count, "jogador", "jogadores") : "Nenhum jogador",
     );
-  }
-
-  function unfocusCity(event) {
-    const circle = event.currentTarget;
-    circle.classList.remove("is-hovered");
-    circle.parentElement.classList.remove("has-hover");
-    hideTooltip();
   }
 
   function showTooltip(event, titleText, valueText) {
