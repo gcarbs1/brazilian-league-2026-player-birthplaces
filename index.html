@@ -3,23 +3,24 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Mapa dos locais de nascimento dos jogadores brasileiros do Brasileirão 2026.">
-    <title>Locais de nascimento dos jogadores do Brasileirão</title>
+    <meta name="description" content="Mapa dos locais de nascimento dos jogadores brasileiros da Série A de 2026.">
+    <meta name="theme-color" content="#f4f1e9">
+    <title>De onde vem o Brasileirão?</title>
     <link rel="stylesheet" href="html/styles.css">
   </head>
   <body>
     <main class="page">
-      <aside class="intro">
+      <aside class="intro" aria-labelledby="page-title">
         <div class="intro__content">
-          <h1>
-            <span>Locais de</span>
-            <em>nascimento</em>
-            <small>dos jogadores do Brasileirão</small>
-          </h1>
-
-          <p class="deck">
-            Explore os municípios de nascimento dos jogadores brasileiros nos elencos do Brasileirão Série A 2026.
-          </p>
+          <div class="title-block">
+            <h1 id="page-title">
+              <span>De onde vem o</span>
+              <strong>Brasileirão?</strong>
+            </h1>
+            <p class="deck">
+              Municípios de nascimento dos jogadores brasileiros da Série A de 2026.
+            </p>
+          </div>
 
           <form class="filters" aria-label="Filtros do mapa">
             <label>
@@ -29,9 +30,9 @@
               </select>
             </label>
             <label>
-              <span>Buscar jogador, clube ou cidade</span>
+              <span>Buscar</span>
               <span class="search-field">
-                <input id="search" type="search" autocomplete="off">
+                <input id="search" type="search" autocomplete="off" placeholder="Jogador, clube ou cidade">
                 <button id="clear-search" type="button" aria-label="Limpar busca" hidden></button>
               </span>
             </label>
@@ -40,16 +41,29 @@
 
         <div class="intro__footer">
           <div class="legend" aria-label="Legenda dos círculos proporcionais">
-            <span class="legend__small"></span>
-            <span class="legend__large"></span>
-            <p>Área do círculo = número de jogadores</p>
+            <div class="legend__scale" aria-hidden="true">
+              <span class="legend__small"></span>
+              <span class="legend__medium"></span>
+              <span class="legend__large"></span>
+            </div>
+            <p>Número de jogadores</p>
           </div>
+          <p class="source-note">Fonte: Transfermarkt · limites estaduais: IBGE</p>
         </div>
       </aside>
 
-      <section class="map-panel" aria-labelledby="map-description">
+      <section class="map-panel" id="map-panel" aria-labelledby="map-description">
+        <header class="map-toolbar" aria-live="polite">
+          <button id="back-state" type="button" hidden>← Brasil</button>
+          <div>
+            <strong id="view-title">Brasil</strong>
+            <span id="scope-summary">503 jogadores · 244 municípios</span>
+          </div>
+        </header>
         <svg id="map" role="img" aria-labelledby="map-description"></svg>
         <p class="sr-only" id="map-description">Mapa do Brasil com círculos proporcionais ao número de jogadores nascidos em cada município.</p>
+
+        <p class="map-hint" id="map-hint">Selecione um estado</p>
 
         <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
         <div class="empty-state" id="empty-state" hidden>Nenhum resultado para esses filtros.</div>

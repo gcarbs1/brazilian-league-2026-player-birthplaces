@@ -51,12 +51,26 @@
     ["São Paulo Futebol Clube", "São Paulo"],
   ]);
 
+  const annotationLayout = new Map([
+    ["Fortaleza|CE", -36],
+    ["Salvador|BA", -8],
+    ["Belo Horizonte|MG", -52],
+    ["Rio de Janeiro|RJ", 46],
+    ["São Paulo|SP", 102],
+  ]);
+
   const players = source.players.map((player) => ({
     ...player,
     municipality_id: String(player.municipality_id),
     latitude: Number(player.latitude),
     longitude: Number(player.longitude),
-    search: normalize(`${player.player_name} ${player.full_name} ${player.birth_city} ${player.birth_state} ${player.club}`),
+    search: normalize([
+      player.player_name,
+      player.full_name,
+      player.birth_city,
+      player.birth_state,
+      player.club,
+    ].join(" ")),
   }));
 
   const ui = {
@@ -65,6 +79,11 @@
     club: document.querySelector("#club-filter"),
     search: document.querySelector("#search"),
     clearSearch: document.querySelector("#clear-search"),
+    backState: document.querySelector("#back-state"),
+    viewTitle: document.querySelector("#view-title"),
+    scopeSummary: document.querySelector("#scope-summary"),
+    mapHint: document.querySelector("#map-hint"),
+    mapDescription: document.querySelector("#map-description"),
     tooltip: document.querySelector("#tooltip"),
     empty: document.querySelector("#empty-state"),
     sheet: document.querySelector("#city-sheet"),
@@ -74,18 +93,21 @@
     playerList: document.querySelector("#player-list"),
   };
 
-  const state = { club: "all", query: "", selectedId: null };
+  const requestedUf = new URLSearchParams(window.location.search).get("uf");
+  const initialUf = brazil.features.some((feature) => feature.properties.uf === requestedUf)
+    ? requestedUf
+    : null;
+
+  const state = {
+    club: "all",
+    query: "",
+    selectedUf: initialUf,
+    selectedId: null,
+  };
+
   const allCities = groupCities(players);
   const maxCount = d3.max(allCities, (city) => city.count) || 1;
   const radius = d3.scaleSqrt().domain([0, maxCount]).range([0, 39]);
-
-  const annotationOffsets = new Map([
-    ["São Paulo|SP", [136, 92]],
-    ["Rio de Janeiro|RJ", [66, 44]],
-    ["Salvador|BA", [70, -18]],
-    ["Belo Horizonte|MG", [116, -72]],
-    ["Fortaleza|CE", [92, -42]],
-  ]);
 
   [...new Set(players.map((player) => player.club))]
     .sort((a, b) => a.localeCompare(b, "pt-BR"))
@@ -110,10 +132,13 @@
     draw();
   });
 
+  ui.backState.addEventListener("click", exitState);
   ui.closeSheet.addEventListener("click", () => closeCity());
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.selectedId) closeCity();
+    if (event.key !== "Escape") return;
+    if (state.selectedId) closeCity();
+    else if (state.selectedUf) exitState();
   });
 
   let frame;
@@ -154,46 +179,93 @@
 
   function draw() {
     const visiblePlayers = filteredPlayers();
-    const cities = groupCities(visiblePlayers);
+    const scopedPlayers = state.selectedUf
+      ? visiblePlayers.filter((player) => player.birth_state_code === state.selectedUf)
+      : visiblePlayers;
+    const cities = groupCities(scopedPlayers);
     const width = Math.max(ui.panel.clientWidth, 320);
     const height = Math.max(ui.panel.clientHeight, 520);
+    const selectedFeature = state.selectedUf
+      ? brazil.features.find((feature) => feature.properties.uf === state.selectedUf)
+      : null;
     const selectedCity = cities.find((city) => city.id === state.selectedId);
+    const showAnnotations = width >= 720 && !selectedFeature && state.club === "all" && !state.query;
+    const labelColumn = showAnnotations ? Math.min(190, width * 0.23) : 0;
+    const plotRight = Math.max(250, width - labelColumn - 40);
+    const geography = selectedFeature || brazil;
+    const features = selectedFeature ? [selectedFeature] : brazil.features;
+    const stateCounts = d3.rollup(visiblePlayers, (items) => items.length, (player) => player.birth_state_code);
 
     if (state.selectedId && !selectedCity) closeCity(false);
     if (selectedCity) renderCitySheet(selectedCity);
     ui.panel.classList.toggle("has-sheet", Boolean(state.selectedId));
 
+    updateSummary(scopedPlayers, cities, selectedFeature);
     ui.empty.hidden = cities.length > 0;
-    ui.svg.attr("viewBox", `0 0 ${width} ${height}`).selectAll("*").remove();
+    ui.svg.attr("viewBox", "0 0 " + width + " " + height).selectAll("*").remove();
 
-    const rightEdge = Math.max(250, width - 34);
-    const projection = d3.geoMercator().fitExtent([[64, 68], [rightEdge, height - 54]], brazil);
+    const projection = d3.geoMercator().fitExtent(
+      [[52, 94], [plotRight, height - 52]],
+      geography,
+    );
     const path = d3.geoPath(projection);
 
-    ui.svg.append("g")
-      .selectAll("path")
-      .data(brazil.features)
+    const stateLayer = ui.svg.append("g").attr("class", "states");
+    stateLayer.selectAll("path.state")
+      .data(features, (feature) => feature.properties.uf)
       .join("path")
-      .attr("class", "state")
-      .attr("d", path);
+      .attr("class", selectedFeature ? "state is-selected" : "state is-interactive")
+      .attr("d", path)
+      .attr("tabindex", selectedFeature ? null : 0)
+      .attr("role", selectedFeature ? null : "button")
+      .attr("aria-label", (feature) => {
+        const count = stateCounts.get(feature.properties.uf) || 0;
+        return feature.properties.name + ": " + count + " " + word(count, "jogador", "jogadores") + ". Clique para ver os municípios.";
+      })
+      .on("pointerenter", (event, feature) => {
+        if (!selectedFeature) focusState(event, feature, stateCounts);
+      })
+      .on("pointermove", (event) => {
+        if (!selectedFeature) moveTooltip(event);
+      })
+      .on("pointerleave", () => {
+        if (!selectedFeature) hideTooltip();
+      })
+      .on("focus", (event, feature) => {
+        if (!selectedFeature) focusState(event, feature, stateCounts);
+      })
+      .on("blur", hideTooltip)
+      .on("click", (event, feature) => {
+        if (selectedFeature) return;
+        event.stopPropagation();
+        selectState(feature);
+      })
+      .on("keydown", (event, feature) => {
+        if (selectedFeature || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        selectState(feature);
+      });
 
-    if (!state.selectedId && state.club === "all" && !state.query) {
-      drawAnnotations(cities, projection);
+    if (showAnnotations) {
+      drawAnnotations(cities, projection, width, plotRight, height);
     }
 
     const cityLayer = ui.svg.append("g")
-      .attr("class", `cities${state.selectedId ? " has-selection" : ""}`);
+      .attr("class", "cities" + (state.selectedId ? " has-selection" : ""));
 
     cityLayer.selectAll("circle.city")
       .data(cities.slice().sort((a, b) => d3.descending(a.count, b.count)), (city) => city.id)
       .join("circle")
-      .attr("class", (city) => `city${city.id === state.selectedId ? " is-selected" : ""}`)
+      .attr("class", (city) => "city" + (city.id === state.selectedId ? " is-selected" : ""))
       .attr("cx", (city) => projection([city.longitude, city.latitude])[0])
       .attr("cy", (city) => projection([city.longitude, city.latitude])[1])
-      .attr("r", (city) => radius(city.count))
+      .attr("r", (city) => Math.max(2.3, radius(city.count)))
       .attr("tabindex", 0)
       .attr("role", "button")
-      .attr("aria-label", (city) => `${city.city}, ${city.uf}: ${city.count} ${word(city.count, "jogador", "jogadores")}. Clique para ver os nomes.`)
+      .attr("aria-label", (city) =>
+        city.city + ", " + city.uf + ": " + city.count + " " +
+        word(city.count, "jogador", "jogadores") + ". Clique para ver os nomes.",
+      )
       .on("pointerenter", focusCity)
       .on("pointermove", moveTooltip)
       .on("pointerleave", unfocusCity)
@@ -216,7 +288,7 @@
         .attr("class", "selection-ring")
         .attr("cx", x)
         .attr("cy", y)
-        .attr("r", radius(selectedCity.count) + 8);
+        .attr("r", Math.max(2.3, radius(selectedCity.count)) + 8);
     }
 
     ui.svg.on("click", () => {
@@ -224,9 +296,28 @@
     });
   }
 
-  function drawAnnotations(cities, projection) {
-    const annotated = cities.filter((city) => annotationOffsets.has(`${city.city}|${city.uf}`));
+  function updateSummary(scopedPlayers, cities, selectedFeature) {
+    const playerCount = scopedPlayers.length;
+    const cityCount = cities.length;
+    const playerLabel = word(playerCount, "jogador", "jogadores");
+    const cityLabel = word(cityCount, "município", "municípios");
+    const placeName = selectedFeature ? selectedFeature.properties.name : "Brasil";
+
+    ui.viewTitle.textContent = placeName;
+    ui.scopeSummary.textContent = playerCount + " " + playerLabel + " · " + cityCount + " " + cityLabel;
+    ui.mapHint.textContent = selectedFeature ? "Selecione um município" : "Selecione um estado";
+    ui.backState.hidden = !selectedFeature;
+    ui.mapDescription.textContent =
+      "Mapa de " + placeName + " com " + cityCount + " " + cityLabel +
+      " e círculos proporcionais aos " + playerCount + " " + playerLabel + " exibidos.";
+  }
+
+  function drawAnnotations(cities, projection, width, plotRight, height) {
+    const annotated = cities.filter((city) => annotationLayout.has(city.city + "|" + city.uf));
     const labels = ui.svg.append("g").attr("class", "map-labels");
+    const labelX = width - 28;
+    const connectorX = labelX - 142;
+    const elbowX = plotRight + 14;
 
     const defs = ui.svg.append("defs");
     defs.append("marker")
@@ -239,35 +330,60 @@
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,0 L8,4 L0,8 Z")
-      .attr("fill", "#263a34");
+      .attr("fill", "#1c4f70");
 
     annotated.forEach((city) => {
       const [x, y] = projection([city.longitude, city.latitude]);
-      const [dx, dy] = annotationOffsets.get(`${city.city}|${city.uf}`);
-      const anchor = dx < 0 ? "end" : "start";
-      const textX = x + dx;
-      const textY = y + dy;
-      const lineStartX = textX + (dx < 0 ? 10 : -10);
-      const elbowX = x + (dx < 0 ? -42 : 42);
+      const key = city.city + "|" + city.uf;
+      const textY = Math.max(110, Math.min(height - 58, y + annotationLayout.get(key)));
       const label = labels.append("g").attr("class", "map-label");
 
       label.append("polyline")
-        .attr("points", `${lineStartX},${textY + 3} ${elbowX},${textY + 3} ${x},${y}`)
+        .attr(
+          "points",
+          connectorX + "," + (textY - 3) + " " +
+          elbowX + "," + (textY - 3) + " " +
+          x + "," + y,
+        )
         .attr("marker-end", "url(#annotation-arrow)");
 
       label.append("text")
-        .attr("x", textX)
+        .attr("x", labelX)
         .attr("y", textY)
-        .attr("text-anchor", anchor)
+        .attr("text-anchor", "end")
         .text(city.city);
 
       label.append("text")
         .attr("class", "label-count")
-        .attr("x", textX)
-        .attr("y", textY + 13)
-        .attr("text-anchor", anchor)
-        .text(`${city.count} ${word(city.count, "jogador", "jogadores")}`);
+        .attr("x", labelX)
+        .attr("y", textY + 12)
+        .attr("text-anchor", "end")
+        .text(city.count + " " + word(city.count, "jogador", "jogadores"));
     });
+  }
+
+  function selectState(feature) {
+    hideTooltip();
+    closeCity(false);
+    state.selectedUf = feature.properties.uf;
+    syncUrl(state.selectedUf);
+    draw();
+    requestAnimationFrame(() => ui.backState.focus());
+  }
+
+  function exitState() {
+    hideTooltip();
+    closeCity(false);
+    state.selectedUf = null;
+    syncUrl(null);
+    draw();
+  }
+
+  function syncUrl(uf) {
+    const url = new URL(window.location.href);
+    if (uf) url.searchParams.set("uf", uf);
+    else url.searchParams.delete("uf");
+    window.history.replaceState(null, "", url);
   }
 
   function selectCity(city) {
@@ -289,7 +405,7 @@
 
   function renderCitySheet(city) {
     ui.cityTitle.textContent = city.city;
-    ui.cityCount.textContent = `${city.count} ${word(city.count, "jogador", "jogadores")}`;
+    ui.cityCount.textContent = city.count + " " + word(city.count, "jogador", "jogadores");
     ui.playerList.replaceChildren();
 
     city.players.forEach((player, index) => {
@@ -308,7 +424,7 @@
       details.textContent = clubShortNames.get(player.club) || player.club;
       details.title = player.club;
       crest.className = "player__crest";
-      crest.src = `html/assets/clubs/${clubIds.get(player.club)}.png`;
+      crest.src = "html/assets/clubs/" + clubIds.get(player.club) + ".png";
       crest.alt = "";
       crest.width = 32;
       crest.height = 32;
@@ -323,11 +439,24 @@
     ui.sheet.scrollTop = 0;
   }
 
+  function focusState(event, feature, stateCounts) {
+    const count = stateCounts.get(feature.properties.uf) || 0;
+    showTooltip(
+      event,
+      feature.properties.name,
+      count + " " + word(count, "jogador", "jogadores") + " · abrir estado",
+    );
+  }
+
   function focusCity(event, city) {
     const circle = event.currentTarget;
     circle.classList.add("is-hovered");
     circle.parentElement.classList.add("has-hover");
-    showTooltip(event, city);
+    showTooltip(
+      event,
+      city.city + ", " + city.uf,
+      city.count + " " + word(city.count, "jogador", "jogadores"),
+    );
   }
 
   function unfocusCity(event) {
@@ -337,12 +466,12 @@
     hideTooltip();
   }
 
-  function showTooltip(event, city) {
+  function showTooltip(event, titleText, valueText) {
     ui.tooltip.replaceChildren();
     const title = document.createElement("strong");
     const value = document.createElement("span");
-    title.textContent = `${city.city}, ${city.uf}`;
-    value.textContent = `${city.count} ${word(city.count, "jogador", "jogadores")}`;
+    title.textContent = titleText;
+    value.textContent = valueText;
     ui.tooltip.append(title, value);
     ui.tooltip.hidden = false;
 
@@ -364,8 +493,8 @@
     const pad = 12;
     const left = Math.min(clientX - panel.left + 14, panel.width - tooltip.width - pad);
     const top = Math.min(clientY - panel.top + 14, panel.height - tooltip.height - pad);
-    ui.tooltip.style.left = `${Math.max(pad, left)}px`;
-    ui.tooltip.style.top = `${Math.max(pad, top)}px`;
+    ui.tooltip.style.left = Math.max(pad, left) + "px";
+    ui.tooltip.style.top = Math.max(pad, top) + "px";
   }
 
   function hideTooltip() {
