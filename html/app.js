@@ -72,6 +72,9 @@
       player.club,
     ].join(" ")),
   }));
+  const maximumStateCount = d3.max(
+    d3.rollup(players, (items) => items.length, (player) => player.birth_state_code).values(),
+  ) || 1;
 
   const supportedStates = new Set(players.map((player) => player.birth_state_code));
   const requestedUf = new URLSearchParams(window.location.search).get("uf");
@@ -90,6 +93,8 @@
     scopeSummary: document.querySelector("#scope-summary"),
     mapHint: document.querySelector("#map-hint"),
     mapDescription: document.querySelector("#map-description"),
+    legendSymbol: document.querySelector("#legend-symbol"),
+    legendText: document.querySelector("#legend-text"),
     tooltip: document.querySelector("#tooltip"),
     empty: document.querySelector("#empty-state"),
     sheet: document.querySelector("#city-sheet"),
@@ -214,8 +219,45 @@
     const projection = d3.geoMercator().fitExtent([[52, 94], [plotRight, height - 52]], brazil);
     const path = d3.geoPath(projection);
     const stateCounts = d3.rollup(visiblePlayers, (items) => items.length, (player) => player.birth_state_code);
-    const maxCount = d3.max(stateCounts.values()) || 1;
-    const color = d3.scaleSqrt().domain([0, maxCount]).range(["#dbe5e9", "#1c4f70"]);
+    const netSpacing = d3.scaleSqrt()
+      .domain([0, maximumStateCount])
+      .range([22, 5])
+      .clamp(true);
+
+    const defs = ui.svg.append("defs");
+    brazil.features.forEach((feature) => {
+      const uf = feature.properties.uf;
+      const count = stateCounts.get(uf) || 0;
+      if (!count) return;
+
+      const spacing = netSpacing(count);
+      const pattern = defs.append("pattern")
+        .attr("id", "state-net-" + uf)
+        .attr("patternUnits", "userSpaceOnUse")
+        .attr("width", spacing)
+        .attr("height", spacing);
+
+      pattern.append("rect")
+        .attr("width", spacing)
+        .attr("height", spacing)
+        .attr("fill", "#f7f6f1");
+
+      pattern.append("path")
+        .attr(
+          "d",
+          "M0,0L" + spacing + "," + spacing +
+          "M-" + spacing + ",0L0," + spacing +
+          "M" + spacing + ",0L" + (spacing * 2) + "," + spacing +
+          "M0," + spacing + "L" + spacing + ",0" +
+          "M-" + spacing + "," + spacing + "L0,0" +
+          "M" + spacing + "," + spacing + "L" + (spacing * 2) + ",0",
+        )
+        .attr("fill", "none")
+        .attr("stroke", "#356f95")
+        .attr("stroke-width", 0.68)
+        .attr("stroke-opacity", 0.74)
+        .attr("vector-effect", "non-scaling-stroke");
+    });
 
     ui.svg.append("g")
       .attr("class", "states")
@@ -227,8 +269,8 @@
         return "state" + (count ? " is-interactive has-data" : "");
       })
       .style("--fill", (feature) => {
-        const count = stateCounts.get(feature.properties.uf) || 0;
-        return count ? color(count) : "#f7f6f1";
+        const uf = feature.properties.uf;
+        return stateCounts.get(uf) ? "url(#state-net-" + uf + ")" : "#f7f6f1";
       })
       .attr("d", path)
       .attr("tabindex", (feature) => stateCounts.get(feature.properties.uf) ? 0 : null)
@@ -336,9 +378,15 @@
       ? "Carregando municípios"
       : selectedFeature ? "Selecione um município" : "Selecione um estado";
     ui.backState.hidden = !selectedFeature;
+    ui.legendSymbol.className = selectedFeature
+      ? "legend__symbol legend__gradient"
+      : "legend__symbol legend__net";
+    ui.legendText.textContent = selectedFeature
+      ? "Mais jogadores por município"
+      : "Trama mais densa = mais jogadores";
     ui.mapDescription.textContent = selectedFeature
       ? "Mapa de " + placeName + " dividido em municípios. A intensidade da cor representa o número de jogadores."
-      : "Mapa do Brasil. A intensidade da cor de cada estado representa o número de jogadores.";
+      : "Mapa do Brasil preenchido por uma trama mais fechada nos estados que concentram mais jogadores.";
   }
 
   function drawAnnotations(cities, projection, width, plotRight, height) {

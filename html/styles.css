@@ -75,7 +75,7 @@ h1 {
   font-stretch: condensed;
   font-weight: 800;
   letter-spacing: -0.055em;
-  line-height: 0.78;
+  line-height: 0.82;
   text-transform: uppercase;
 }
 
@@ -90,6 +90,7 @@ h1 strong {
   color: var(--accent-dark);
   font-size: 0.82em;
   font-weight: inherit;
+  margin-top: 0.16em;
   white-space: nowrap;
 }
 
@@ -214,11 +215,25 @@ h1 strong {
   text-transform: uppercase;
 }
 
-.legend__gradient {
+.legend__symbol {
   display: block;
+  flex: 0 0 auto;
+}
+
+.legend__gradient {
   width: 3.8rem;
   height: 0.55rem;
   background: linear-gradient(90deg, var(--map-land), var(--accent-dark));
+  border: 1px solid var(--map-line);
+}
+
+.legend__net {
+  width: 3.8rem;
+  height: 0.72rem;
+  background-color: var(--map-land);
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 5px, var(--accent-dark) 5px 5.7px),
+    repeating-linear-gradient(-45deg, transparent 0 5px, var(--accent-dark) 5px 5.7px);
   border: 1px solid var(--map-line);
 }
 .legend p,
@@ -331,13 +346,14 @@ h1 strong {
 
 .state.is-interactive {
   cursor: zoom-in;
-  transition: fill 150ms ease, stroke 150ms ease;
+  transition: filter 150ms ease, stroke 150ms ease;
 }
 
 .state.is-interactive:hover,
 .state.is-interactive:focus {
-  fill: var(--accent-soft);
+  fill: var(--fill, var(--map-land));
   stroke: var(--accent-dark);
+  filter: brightness(0.9);
   outline: none;
 }
 
