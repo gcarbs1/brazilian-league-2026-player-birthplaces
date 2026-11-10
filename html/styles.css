@@ -577,8 +577,7 @@ h1 strong {
   font-family: var(--display);
   /* Cabe a maior palavra na largura do painel (até 0,68em por letra, com folga), no máximo 4,6rem. */
   font-size: min(4.6rem, calc(100cqi / (var(--len, 8) * 0.68)));
-  hyphens: manual;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   font-weight: 800;
   letter-spacing: -0.06em;
   line-height: 0.78;
