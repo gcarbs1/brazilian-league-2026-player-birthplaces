@@ -575,8 +575,8 @@ h1 strong {
   max-width: 100%;
   margin: clamp(2.5rem, 7vh, 5.5rem) 0 0;
   font-family: var(--display);
-  /* Cabe a maior palavra na largura do painel (cerca de 0,5em por letra), até 5,8rem. */
-  font-size: min(5.8rem, calc(100cqi / (var(--len, 8) * 0.5)));
+  /* Cabe a maior palavra na largura do painel (até 0,68em por letra, com folga), no máximo 4,6rem. */
+  font-size: min(4.6rem, calc(100cqi / (var(--len, 8) * 0.68)));
   overflow-wrap: break-word;
   font-weight: 800;
   letter-spacing: -0.06em;
