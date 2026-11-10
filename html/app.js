@@ -10,7 +10,7 @@
  * 6. atualiza o título e as anotações das principais cidades;
  * 7. controla a navegação entre o Brasil e um estado;
  * 8. monta o painel com os jogadores do município selecionado;
- * 9. exibe as dicas flutuantes.
+ * 9. exibe as dicas flutuantes e quebra os nomes longos em sílabas.
  *
  * Os dados vêm de html/data/birthplaces.js e html/data/brazil-states.js, gerados
  * pelo notebook 01; os municípios de cada estado são carregados sob demanda.
@@ -513,10 +513,12 @@
 
   /** Preenche o painel com a lista de jogadores, cada um com o escudo do clube. */
   function renderCitySheet(city) {
-    ui.cityTitle.textContent = city.city;
-    // O tamanho do título acompanha a maior palavra do nome, para que ele nunca seja cortado.
-    const longestWord = Math.max(4, ...city.city.split(/\s+/).map((part) => part.length));
-    ui.cityTitle.style.setProperty("--len", longestWord);
+    // Palavras com mais de 7 letras recebem pontos de quebra silábica. O tamanho do título
+    // acompanha o maior trecho que pode ficar numa linha, para que o nome nunca seja cortado.
+    ui.cityTitle.textContent = hyphenate(city.city);
+    const widest = Math.max(4, ...city.city.split(/[\s-]+/).map((part) =>
+      part.length > MIN_HYPHEN_LENGTH ? Math.ceil(part.length / 2) + 1 : part.length));
+    ui.cityTitle.style.setProperty("--len", widest);
     ui.cityCount.textContent = city.count + " " + word(city.count, "jogador", "jogadores");
     ui.playerList.replaceChildren();
 
@@ -552,7 +554,7 @@
   }
 
 
-  // 9. Dicas flutuantes
+  // 9. Dicas flutuantes e quebra silábica dos nomes
   /** Dica de um estado. */
   function focusState(event, feature, count) {
     showTooltip(
@@ -569,6 +571,46 @@
       city.city + " (" + city.uf + ")",
       city.count + " " + word(city.count, "jogador", "jogadores") + " · ver nomes",
     );
+  }
+
+  // Quebra silábica dos nomes
+  /** Nomes de cidade com mais letras que isso podem ser quebrados em sílabas. */
+  const MIN_HYPHEN_LENGTH = 7;
+
+  /** Posições de quebra silábica (aproximadas) de uma palavra em português. */
+  function syllableCuts(word) {
+    const w = word.toLowerCase();
+    const vowels = "aeiouáéíóúâêôãõàü";
+    const strong = "aeoáéóâêô";
+    const isVowel = (c) => vowels.includes(c);
+    const inseparable = /^(ch|lh|nh|qu|gu|[bcdfgptv][lr])$/;
+    const cuts = [];
+
+    for (let i = 1; i < w.length; i++) {
+      const before = w[i - 1];
+      const here = w[i];
+      if (isVowel(before) && isVowel(here)) {
+        // Hiato: duas vogais fortes seguidas separam-se; ditongos ficam juntos.
+        if (strong.includes(before) && strong.includes(here)) cuts.push(i);
+      } else if (isVowel(before)) {
+        const next = w[i + 1];
+        if (next && (isVowel(next) || inseparable.test(here + next))) cuts.push(i);
+      } else if (!isVowel(before) && !isVowel(here) && i >= 2 && isVowel(w[i - 2])) {
+        // Encontro consonantal separável (ex.: "rt", "ss", "ng"): a quebra fica entre as duas.
+        if (!inseparable.test(before + here) && !(w[i - 1] === before && inseparable.test(w[i - 2] + before))) cuts.push(i);
+      }
+    }
+    // Cada pedaço precisa ter ao menos duas letras.
+    return cuts.filter((cut) => cut >= 2 && w.length - cut >= 2);
+  }
+
+  /** Insere hifens opcionais (U+00AD) nas palavras longas; o navegador só os mostra ao quebrar a linha. */
+  function hyphenate(text) {
+    return text.replace(/\p{L}+/gu, (word) => {
+      if (word.length <= MIN_HYPHEN_LENGTH) return word;
+      const cuts = new Set(syllableCuts(word));
+      return [...word].map((letter, i) => (cuts.has(i) ? "\u00ad" : "") + letter).join("");
+    });
   }
 
   /** Dica de um município do mapa de calor. */
