@@ -526,6 +526,7 @@ h1 strong {
 /* 9. Painel do município
    Entra pela direita no desktop e por baixo no celular. */
 .city-sheet {
+  container-type: inline-size;
   position: absolute;
   inset: 0 0 0 auto;
   z-index: 10;
@@ -571,10 +572,12 @@ h1 strong {
 }
 
 .city-sheet h2 {
-  max-width: 9em;
+  max-width: 100%;
   margin: clamp(2.5rem, 7vh, 5.5rem) 0 0;
   font-family: var(--display);
-  font-size: clamp(3.2rem, 5vw, 5.8rem);
+  /* Cabe a maior palavra na largura do painel (cerca de 0,5em por letra), até 5,8rem. */
+  font-size: min(5.8rem, calc(100cqi / (var(--len, 8) * 0.5)));
+  overflow-wrap: break-word;
   font-weight: 800;
   letter-spacing: -0.06em;
   line-height: 0.78;
@@ -709,7 +712,7 @@ h1 strong {
     transform: translateY(102%);
   }
   .city-sheet.is-open { transform: translateY(0); }
-  .city-sheet h2 { margin-top: 1.8rem; font-size: clamp(3rem, 14vw, 5rem); }
+  .city-sheet h2 { margin-top: 1.8rem; }
   .map-panel.has-sheet #map { transform: translateY(-7%); }
 }
 

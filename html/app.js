@@ -514,6 +514,9 @@
   /** Preenche o painel com a lista de jogadores, cada um com o escudo do clube. */
   function renderCitySheet(city) {
     ui.cityTitle.textContent = city.city;
+    // O tamanho do título acompanha a maior palavra do nome, para que ele nunca seja cortado.
+    const longestWord = Math.max(4, ...city.city.split(/\s+/).map((part) => part.length));
+    ui.cityTitle.style.setProperty("--len", longestWord);
     ui.cityCount.textContent = city.count + " " + word(city.count, "jogador", "jogadores");
     ui.playerList.replaceChildren();
 
