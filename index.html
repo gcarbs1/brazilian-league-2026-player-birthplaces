@@ -1,15 +1,19 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Mapa dos locais de nascimento dos jogadores brasileiros da Série A de 2026.">
-    <meta name="theme-color" content="#f4f1e9">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Mapa dos locais de nascimento dos jogadores brasileiros da Série A de 2026."
+    />
+    <meta name="theme-color" content="#f4f1e9" />
     <title>De onde vem o Brasileirão?</title>
-    <link rel="stylesheet" href="html/styles.css">
+    <link rel="stylesheet" href="html/styles.css" />
   </head>
   <body>
     <main class="page">
+      <!-- 1. Identidade do projeto, busca e legenda do mapa -->
       <aside class="intro" aria-labelledby="page-title">
         <div class="intro__content">
           <div class="title-block">
@@ -18,55 +22,88 @@
               <strong>Brasileirão?</strong>
             </h1>
             <p class="deck">
-              Municípios de nascimento dos jogadores brasileiros da Série A de 2026.
+              Municípios de nascimento dos jogadores brasileiros da Série A de
+              2026.
             </p>
           </div>
 
-          <form class="filters" aria-label="Filtros do mapa">
-            <label>
-              <span>Clube</span>
-              <select id="club-filter">
-                <option value="all">Todos os clubes</option>
-              </select>
-            </label>
+          <!-- Busca por jogador, clube ou cidade -->
+          <form class="filters" aria-label="Busca no mapa">
             <label>
               <span>Buscar</span>
               <span class="search-field">
-                <input id="search" type="search" autocomplete="off" placeholder="Jogador, clube ou cidade">
-                <button id="clear-search" type="button" aria-label="Limpar busca" hidden></button>
+                <input
+                  id="search"
+                  type="search"
+                  autocomplete="off"
+                  placeholder="Jogador, clube ou cidade"
+                />
+                <button
+                  id="clear-search"
+                  type="button"
+                  aria-label="Limpar busca"
+                  hidden
+                ></button>
               </span>
             </label>
           </form>
         </div>
 
+        <!-- Legenda (muda entre a visão nacional e a estadual) e proveniência dos dados -->
         <div class="intro__footer">
           <div class="legend" aria-label="Legenda do mapa">
-            <span class="legend__symbol legend__net" id="legend-symbol" aria-hidden="true"></span>
-            <p id="legend-text">Trama mais densa = mais jogadores</p>
+            <span
+              class="legend__symbol legend__bubble"
+              id="legend-symbol"
+              aria-hidden="true"
+            ></span>
+            <p id="legend-text">Área da bolha = número de jogadores</p>
           </div>
           <p class="source-note">Fonte: Transfermarkt · limites estaduais: IBGE</p>
         </div>
       </aside>
 
-      <section class="map-panel" id="map-panel" aria-labelledby="map-description">
+      <!-- 2. Mapa: bolhas por município no Brasil e mapa de calor por município ao entrar num estado -->
+      <section
+        class="map-panel"
+        id="map-panel"
+        aria-labelledby="map-description"
+      >
         <header class="map-toolbar" aria-live="polite">
           <button id="back-state" type="button" hidden>← Brasil</button>
           <div>
             <strong id="view-title">Brasil</strong>
-            <span id="scope-summary">503 jogadores · 244 municípios</span>
           </div>
         </header>
         <svg id="map" role="img" aria-labelledby="map-description"></svg>
-        <p class="sr-only" id="map-description">Mapa do Brasil em que a intensidade da cor representa o número de jogadores.</p>
+        <p class="sr-only" id="map-description">
+          Mapa do Brasil em que a intensidade da cor representa o número de
+          jogadores.
+        </p>
 
         <p class="map-hint" id="map-hint">Selecione um estado</p>
 
+        <!-- Elementos compartilhados: dica flutuante e aviso de filtros sem resultado -->
         <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
-        <div class="empty-state" id="empty-state" hidden>Nenhum resultado para esses filtros.</div>
+        <div class="empty-state" id="empty-state" hidden>
+          Nenhum resultado para esses filtros.
+        </div>
 
-        <aside class="city-sheet" id="city-sheet" aria-hidden="true" aria-labelledby="city-title">
+        <!-- 3. Painel lateral com os jogadores do município selecionado -->
+        <aside
+          class="city-sheet"
+          id="city-sheet"
+          aria-hidden="true"
+          aria-labelledby="city-title"
+        >
           <header class="city-sheet__header">
-            <button id="close-sheet" type="button" aria-label="Fechar lista de jogadores">×</button>
+            <button
+              id="close-sheet"
+              type="button"
+              aria-label="Fechar lista de jogadores"
+            >
+              ×
+            </button>
           </header>
           <h2 id="city-title"></h2>
           <p class="city-sheet__count" id="city-count"></p>
@@ -77,6 +114,9 @@
     </main>
 
     <noscript>Esta visualização precisa de JavaScript.</noscript>
+
+    <!-- Dependências carregadas na ordem: D3, malha dos estados, dados dos jogadores e aplicação.
+         A malha dos municípios de cada estado é carregada sob demanda por html/app.js. -->
     <script src="html/vendor/d3.v7.min.js"></script>
     <script src="html/data/brazil-states.js"></script>
     <script src="html/data/birthplaces.js"></script>

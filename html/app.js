@@ -1,10 +1,30 @@
+/**
+ * Mapa dos locais de nascimento dos jogadores brasileiros da Série A de 2026.
+ *
+ * Como ler este arquivo:
+ * 1. prepara os dados, os nomes e os escudos dos clubes;
+ * 2. reúne os elementos da interface e o estado compartilhado;
+ * 3. liga a busca e o teclado ao redesenho;
+ * 4. define os utilitários de busca e agrupamento por município;
+ * 5. desenha o mapa nacional (bolhas por município) e o estadual (mapa de calor);
+ * 6. atualiza o título e as anotações das principais cidades;
+ * 7. controla a navegação entre o Brasil e um estado;
+ * 8. monta o painel com os jogadores do município selecionado;
+ * 9. exibe as dicas flutuantes.
+ *
+ * Os dados vêm de html/data/birthplaces.js e html/data/brazil-states.js, gerados
+ * pelo notebook 01; os municípios de cada estado são carregados sob demanda.
+ */
 (() => {
   "use strict";
 
+  // 1. Dados, clubes e configuração
+  // Se faltar algum dado ou o D3, a visualização não inicia.
   const source = window.BIRTHPLACE_DATA;
   const brazil = window.BRAZIL_STATES;
   if (!source || !brazil || !window.d3) return;
 
+  // Identificador do clube no Transfermarkt, usado para achar o escudo em html/assets/clubs/.
   const clubIds = new Map([
     ["Associação Chapecoense de Futebol", "17776"],
     ["Botafogo de Futebol e Regatas", "537"],
@@ -28,6 +48,7 @@
     ["São Paulo Futebol Clube", "585"],
   ]);
 
+  // Nomes curtos exibidos nos filtros, no painel e nas dicas.
   const clubShortNames = new Map([
     ["Associação Chapecoense de Futebol", "Chapecoense"],
     ["Botafogo de Futebol e Regatas", "Botafogo"],
@@ -51,6 +72,8 @@
     ["São Paulo Futebol Clube", "São Paulo"],
   ]);
 
+  // Deslocamento vertical (px) do rótulo de cada cidade anotada no mapa nacional,
+  // ajustado à mão para que os rótulos das cidades vizinhas não se sobreponham.
   const annotationLayout = new Map([
     ["Fortaleza|CE", -20],
     ["Salvador|BA", -4],
@@ -59,6 +82,7 @@
     ["São Paulo|SP", 72],
   ]);
 
+  // Cada jogador ganha um texto de busca sem acentos e em minúsculas.
   const players = source.players.map((player) => ({
     ...player,
     municipality_id: String(player.municipality_id),
@@ -70,31 +94,29 @@
       player.birth_city,
       player.birth_state,
       player.club,
+      clubShortNames.get(player.club),
     ].join(" ")),
   }));
-  const maximumStateCount = d3.max(
-    d3.rollup(players, (items) => items.length, (player) => player.birth_state_code).values(),
-  ) || 1;
-
+  // O estado inicial pode vir da URL (?uf=SP); só são aceitos estados com jogadores.
   const supportedStates = new Set(players.map((player) => player.birth_state_code));
   const requestedUf = new URLSearchParams(window.location.search).get("uf");
   const initialUf = supportedStates.has(requestedUf) ? requestedUf : null;
   const municipalityLoads = new Map();
   window.BRAZIL_MUNICIPALITIES = window.BRAZIL_MUNICIPALITIES || {};
 
+
+  // 2. Interface e estado compartilhado
   const ui = {
     svg: d3.select("#map"),
     panel: document.querySelector(".map-panel"),
-    club: document.querySelector("#club-filter"),
     search: document.querySelector("#search"),
     clearSearch: document.querySelector("#clear-search"),
     backState: document.querySelector("#back-state"),
     viewTitle: document.querySelector("#view-title"),
-    scopeSummary: document.querySelector("#scope-summary"),
     mapHint: document.querySelector("#map-hint"),
-    mapDescription: document.querySelector("#map-description"),
     legendSymbol: document.querySelector("#legend-symbol"),
     legendText: document.querySelector("#legend-text"),
+    mapDescription: document.querySelector("#map-description"),
     tooltip: document.querySelector("#tooltip"),
     empty: document.querySelector("#empty-state"),
     sheet: document.querySelector("#city-sheet"),
@@ -104,23 +126,17 @@
     playerList: document.querySelector("#player-list"),
   };
 
+  // Estado único: o mapa é redesenhado por completo sempre que algo aqui muda.
   const state = {
-    club: "all",
     query: "",
     selectedUf: null,
     selectedId: null,
     loadingUf: null,
   };
 
-  [...new Set(players.map((player) => player.club))]
-    .sort((a, b) => a.localeCompare(b, "pt-BR"))
-    .forEach((club) => ui.club.add(new Option(clubShortNames.get(club) || club, club)));
 
-  ui.club.addEventListener("change", (event) => {
-    state.club = event.target.value;
-    draw();
-  });
-
+  // 3. Busca e teclado
+  // A busca de texto cobre jogador, nome completo, cidade, estado e clube.
   ui.search.addEventListener("input", (event) => {
     state.query = normalize(event.target.value);
     ui.clearSearch.hidden = !event.target.value;
@@ -138,32 +154,37 @@
   ui.backState.addEventListener("click", exitState);
   ui.closeSheet.addEventListener("click", () => closeCity());
 
+  // Esc fecha o painel do município e, em seguida, volta ao mapa do Brasil.
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (state.selectedId) closeCity();
     else if (state.selectedUf) exitState();
   });
 
+  // O mapa é redesenhado quando o tamanho do painel muda (no máximo uma vez por quadro).
   let frame;
   new ResizeObserver(() => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(draw);
   }).observe(ui.panel);
 
+  // Primeiro desenho e, se pedido na URL, entrada direta no estado.
   draw();
   if (initialUf) enterState(initialUf, false);
 
+
+  // 4. Utilitários de busca e agrupamento
+  /** Texto sem acentos e em minúsculas, para comparar buscas. */
   function normalize(value) {
     return String(value || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR").trim();
   }
 
+  /** Jogadores que passam pela busca. */
   function filteredPlayers() {
-    return players.filter((player) =>
-      (state.club === "all" || player.club === state.club) &&
-      (!state.query || player.search.includes(state.query)),
-    );
+    return players.filter((player) => !state.query || player.search.includes(state.query));
   }
 
+  /** Agrupa jogadores por município, do mais ao menos numeroso. */
   function groupCities(records) {
     return d3.rollups(
       records,
@@ -180,6 +201,9 @@
     ).map(([, city]) => city).sort((a, b) => d3.descending(a.count, b.count));
   }
 
+
+  // 5. Desenho do mapa
+  /** Redesenha o mapa, o resumo e o painel a partir do estado atual. */
   function draw() {
     const visiblePlayers = filteredPlayers();
     const scopedPlayers = state.selectedUf
@@ -192,7 +216,8 @@
       ? brazil.features.find((feature) => feature.properties.uf === state.selectedUf)
       : null;
     const selectedCity = cities.find((city) => city.id === state.selectedId);
-    const showAnnotations = width >= 720 && !selectedFeature && state.club === "all" && !state.query;
+    // As anotações só aparecem na visão nacional, sem filtros e com espaço lateral.
+    const showAnnotations = width >= 720 && !selectedFeature && !state.query;
     const labelColumn = showAnnotations ? Math.min(125, width * 0.17) : 0;
     const plotRight = Math.max(250, width - labelColumn - 28);
 
@@ -215,63 +240,19 @@
     });
   }
 
+  /** Brasil por estados: estados em fundo neutro e uma bolha por município. */
   function drawNationalView(visiblePlayers, cities, width, height, plotRight, showAnnotations) {
     const projection = d3.geoMercator().fitExtent([[52, 94], [plotRight, height - 52]], brazil);
     const path = d3.geoPath(projection);
     const stateCounts = d3.rollup(visiblePlayers, (items) => items.length, (player) => player.birth_state_code);
-    const netSpacing = d3.scaleSqrt()
-      .domain([0, maximumStateCount])
-      .range([22, 5])
-      .clamp(true);
 
-    const defs = ui.svg.append("defs");
-    brazil.features.forEach((feature) => {
-      const uf = feature.properties.uf;
-      const count = stateCounts.get(uf) || 0;
-      if (!count) return;
-
-      const spacing = netSpacing(count);
-      const pattern = defs.append("pattern")
-        .attr("id", "state-net-" + uf)
-        .attr("patternUnits", "userSpaceOnUse")
-        .attr("width", spacing)
-        .attr("height", spacing);
-
-      pattern.append("rect")
-        .attr("width", spacing)
-        .attr("height", spacing)
-        .attr("fill", "#f7f6f1");
-
-      pattern.append("path")
-        .attr(
-          "d",
-          "M0,0L" + spacing + "," + spacing +
-          "M-" + spacing + ",0L0," + spacing +
-          "M" + spacing + ",0L" + (spacing * 2) + "," + spacing +
-          "M0," + spacing + "L" + spacing + ",0" +
-          "M-" + spacing + "," + spacing + "L0,0" +
-          "M" + spacing + "," + spacing + "L" + (spacing * 2) + ",0",
-        )
-        .attr("fill", "none")
-        .attr("stroke", "#356f95")
-        .attr("stroke-width", 0.68)
-        .attr("stroke-opacity", 0.74)
-        .attr("vector-effect", "non-scaling-stroke");
-    });
-
+    // Os estados com jogadores são clicáveis e abrem o mapa de municípios.
     ui.svg.append("g")
       .attr("class", "states")
       .selectAll("path.state")
       .data(brazil.features, (feature) => feature.properties.uf)
       .join("path")
-      .attr("class", (feature) => {
-        const count = stateCounts.get(feature.properties.uf) || 0;
-        return "state" + (count ? " is-interactive has-data" : "");
-      })
-      .style("--fill", (feature) => {
-        const uf = feature.properties.uf;
-        return stateCounts.get(uf) ? "url(#state-net-" + uf + ")" : "#f7f6f1";
-      })
+      .attr("class", (feature) => "state" + (stateCounts.get(feature.properties.uf) ? " is-interactive" : ""))
       .attr("d", path)
       .attr("tabindex", (feature) => stateCounts.get(feature.properties.uf) ? 0 : null)
       .attr("role", (feature) => stateCounts.get(feature.properties.uf) ? "button" : null)
@@ -280,16 +261,10 @@
         return feature.properties.name + ": " + count + " " + word(count, "jogador", "jogadores") +
           (count ? ". Clique para ver os municípios." : ".");
       })
-      .on("pointerenter", (event, feature) => {
-        const count = stateCounts.get(feature.properties.uf) || 0;
-        focusState(event, feature, count);
-      })
+      .on("pointerenter", (event, feature) => focusState(event, feature, stateCounts.get(feature.properties.uf) || 0))
       .on("pointermove", moveTooltip)
       .on("pointerleave", hideTooltip)
-      .on("focus", (event, feature) => {
-        const count = stateCounts.get(feature.properties.uf) || 0;
-        focusState(event, feature, count);
-      })
+      .on("focus", (event, feature) => focusState(event, feature, stateCounts.get(feature.properties.uf) || 0))
       .on("blur", hideTooltip)
       .on("click", (event, feature) => {
         if (!stateCounts.get(feature.properties.uf)) return;
@@ -302,11 +277,14 @@
         enterState(feature.properties.uf, true);
       });
 
+    drawBubbles(cities, projection, 30);
+
     if (showAnnotations) {
       drawAnnotations(cities, projection, width, plotRight, height);
     }
   }
 
+  /** Estado por municípios: mapa de calor, com a cor indicando o número de jogadores. */
   function drawMunicipalityView(selectedFeature, cities, width, height, plotRight) {
     const municipalities = window.BRAZIL_MUNICIPALITIES[state.selectedUf];
     const projection = d3.geoMercator().fitExtent([[52, 94], [plotRight, height - 52]], selectedFeature);
@@ -314,6 +292,7 @@
     const citiesById = new Map(cities.map((city) => [city.id, city]));
     const maxCount = d3.max(cities, (city) => city.count) || 1;
     const color = d3.scaleSqrt().domain([0, maxCount]).range(["#dbe5e9", "#1c4f70"]);
+    const cityOf = (feature) => citiesById.get(String(feature.properties.codarea));
 
     ui.svg.append("g")
       .attr("class", "municipalities" + (state.selectedId ? " has-selection" : ""))
@@ -321,31 +300,36 @@
       .data(municipalities.features, (feature) => String(feature.properties.codarea))
       .join("path")
       .attr("class", (feature) => {
-        const city = citiesById.get(String(feature.properties.codarea));
-        const selected = city && city.id === state.selectedId;
-        return "municipality" + (city ? " has-data" : "") + (selected ? " is-selected" : "");
+        const city = cityOf(feature);
+        return "municipality" + (city ? " has-data" : "") + (city && city.id === state.selectedId ? " is-selected" : "");
       })
       .style("--fill", (feature) => {
-        const city = citiesById.get(String(feature.properties.codarea));
+        const city = cityOf(feature);
         return city ? color(city.count) : "#f7f6f1";
       })
       .attr("d", path)
-      .attr("tabindex", (feature) => citiesById.has(String(feature.properties.codarea)) ? 0 : null)
-      .attr("role", (feature) => citiesById.has(String(feature.properties.codarea)) ? "button" : null)
-      .attr("aria-label", (feature) => municipalityAria(feature, citiesById))
-      .on("pointerenter", (event, feature) => focusMunicipality(event, feature, citiesById))
+      .attr("tabindex", (feature) => cityOf(feature) ? 0 : null)
+      .attr("role", (feature) => cityOf(feature) ? "button" : null)
+      .attr("aria-label", (feature) => {
+        const city = cityOf(feature);
+        const name = feature.properties.name;
+        return city
+          ? name + ": " + city.count + " " + word(city.count, "jogador", "jogadores") + ". Clique para ver os nomes."
+          : name + ": nenhum jogador na busca atual.";
+      })
+      .on("pointerenter", (event, feature) => focusMunicipality(event, feature, cityOf(feature)))
       .on("pointermove", moveTooltip)
       .on("pointerleave", hideTooltip)
-      .on("focus", (event, feature) => focusMunicipality(event, feature, citiesById))
+      .on("focus", (event, feature) => focusMunicipality(event, feature, cityOf(feature)))
       .on("blur", hideTooltip)
       .on("click", (event, feature) => {
-        const city = citiesById.get(String(feature.properties.codarea));
+        const city = cityOf(feature);
         if (!city) return;
         event.stopPropagation();
         selectCity(city);
       })
       .on("keydown", (event, feature) => {
-        const city = citiesById.get(String(feature.properties.codarea));
+        const city = cityOf(feature);
         if (!city || (event.key !== "Enter" && event.key !== " ")) return;
         event.preventDefault();
         selectCity(city);
@@ -357,38 +341,60 @@
       .attr("d", path);
   }
 
-  function municipalityAria(feature, citiesById) {
-    const city = citiesById.get(String(feature.properties.codarea));
-    const name = feature.properties.name;
-    if (!city) return name + ": nenhum jogador nos filtros atuais.";
-    return name + ": " + city.count + " " + word(city.count, "jogador", "jogadores") +
-      ". Clique para ver os nomes.";
+  /** Bolhas do mapa nacional, uma por município; a área é proporcional ao número de jogadores. */
+  function drawBubbles(cities, projection, maxRadius) {
+    const maxCount = d3.max(cities, (city) => city.count) || 1;
+    const radius = d3.scaleSqrt().domain([1, maxCount]).range([3.5, maxRadius]);
+
+    // As maiores são desenhadas primeiro, para que as pequenas fiquem por cima.
+    ui.svg.append("g")
+      .attr("class", "bubbles" + (state.selectedId ? " has-selection" : ""))
+      .selectAll("circle.bubble")
+      .data(cities.slice().sort((a, b) => d3.descending(a.count, b.count)), (city) => city.id)
+      .join("circle")
+      .attr("class", (city) => "bubble" + (city.id === state.selectedId ? " is-selected" : ""))
+      .attr("cx", (city) => projection([city.longitude, city.latitude])[0])
+      .attr("cy", (city) => projection([city.longitude, city.latitude])[1])
+      .attr("r", (city) => radius(city.count))
+      .attr("tabindex", 0)
+      .attr("role", "button")
+      .attr("aria-label", (city) => city.city + " (" + city.uf + "): " + city.count + " " +
+        word(city.count, "jogador", "jogadores") + ". Clique para ver os nomes.")
+      .on("pointerenter", focusCity)
+      .on("pointermove", moveTooltip)
+      .on("pointerleave", hideTooltip)
+      .on("focus", focusCity)
+      .on("blur", hideTooltip)
+      .on("click", (event, city) => {
+        event.stopPropagation();
+        selectCity(city);
+      })
+      .on("keydown", (event, city) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        selectCity(city);
+      });
   }
 
+
+  // 6. Resumo e anotações
+  /** Atualiza título, dica e descrição acessível do mapa. */
   function updateSummary(scopedPlayers, cities, selectedFeature) {
-    const playerCount = scopedPlayers.length;
-    const cityCount = cities.length;
-    const playerLabel = word(playerCount, "jogador", "jogadores");
-    const cityLabel = word(cityCount, "município", "municípios");
     const placeName = selectedFeature ? selectedFeature.properties.name : "Brasil";
 
     ui.viewTitle.textContent = placeName;
-    ui.scopeSummary.textContent = playerCount + " " + playerLabel + " · " + cityCount + " " + cityLabel;
+    ui.legendSymbol.className = selectedFeature ? "legend__symbol legend__gradient" : "legend__symbol legend__bubble";
+    ui.legendText.textContent = selectedFeature ? "Mais jogadores por município" : "Área da bolha = número de jogadores";
     ui.mapHint.textContent = state.loadingUf
       ? "Carregando municípios"
-      : selectedFeature ? "Selecione um município" : "Selecione um estado";
+      : selectedFeature ? "Selecione um município" : "Selecione um estado ou uma bolha";
     ui.backState.hidden = !selectedFeature;
-    ui.legendSymbol.className = selectedFeature
-      ? "legend__symbol legend__gradient"
-      : "legend__symbol legend__net";
-    ui.legendText.textContent = selectedFeature
-      ? "Mais jogadores por município"
-      : "Trama mais densa = mais jogadores";
     ui.mapDescription.textContent = selectedFeature
-      ? "Mapa de " + placeName + " dividido em municípios. A intensidade da cor representa o número de jogadores."
-      : "Mapa do Brasil preenchido por uma trama mais fechada nos estados que concentram mais jogadores.";
+      ? "Mapa de calor de " + placeName + " dividido em municípios; a intensidade da cor representa o número de jogadores."
+      : "Mapa do Brasil com uma bolha por município; a área da bolha representa o número de jogadores.";
   }
 
+  /** Rótulos ligados por linhas às principais cidades, na coluna à direita do mapa. */
   function drawAnnotations(cities, projection, width, plotRight, height) {
     const annotated = cities.filter((city) => annotationLayout.has(city.city + "|" + city.uf));
     const labels = ui.svg.append("g").attr("class", "map-labels");
@@ -422,15 +428,12 @@
         .attr("y", textY + 12)
         .attr("text-anchor", "end")
         .text(city.count + " " + word(city.count, "jogador", "jogadores"));
-
-      label.append("circle")
-        .attr("class", "annotation-dot")
-        .attr("cx", x)
-        .attr("cy", y)
-        .attr("r", 3);
     });
   }
 
+
+  // 7. Navegação entre o Brasil e um estado
+  /** Carrega a malha municipal do estado e passa para a visão estadual. */
   async function enterState(uf, focusBack) {
     if (!supportedStates.has(uf) || state.loadingUf) return;
     hideTooltip();
@@ -452,6 +455,7 @@
     }
   }
 
+  /** Carrega html/data/municipalities/<UF>.js uma única vez e guarda a promessa. */
   function loadMunicipalities(uf) {
     if (window.BRAZIL_MUNICIPALITIES[uf]) {
       return Promise.resolve(window.BRAZIL_MUNICIPALITIES[uf]);
@@ -470,6 +474,7 @@
     return promise;
   }
 
+  /** Volta ao mapa do Brasil. */
   function exitState() {
     hideTooltip();
     closeCity(false);
@@ -478,6 +483,7 @@
     draw();
   }
 
+  /** Mantém o estado aberto no parâmetro ?uf= da URL, sem criar histórico. */
   function syncUrl(uf) {
     const url = new URL(window.location.href);
     if (uf) url.searchParams.set("uf", uf);
@@ -485,6 +491,9 @@
     window.history.replaceState(null, "", url);
   }
 
+
+  // 8. Painel do município
+  /** Abre o painel com os jogadores do município. */
   function selectCity(city) {
     hideTooltip();
     state.selectedId = city.id;
@@ -502,6 +511,7 @@
     if (redraw) draw();
   }
 
+  /** Preenche o painel com a lista de jogadores, cada um com o escudo do clube. */
   function renderCitySheet(city) {
     ui.cityTitle.textContent = city.city;
     ui.cityCount.textContent = city.count + " " + word(city.count, "jogador", "jogadores");
@@ -538,6 +548,9 @@
     ui.sheet.scrollTop = 0;
   }
 
+
+  // 9. Dicas flutuantes
+  /** Dica de um estado. */
   function focusState(event, feature, count) {
     showTooltip(
       event,
@@ -546,8 +559,17 @@
     );
   }
 
-  function focusMunicipality(event, feature, citiesById) {
-    const city = citiesById.get(String(feature.properties.codarea));
+  /** Dica de uma bolha (município do mapa nacional). */
+  function focusCity(event, city) {
+    showTooltip(
+      event,
+      city.city + " (" + city.uf + ")",
+      city.count + " " + word(city.count, "jogador", "jogadores") + " · ver nomes",
+    );
+  }
+
+  /** Dica de um município do mapa de calor. */
+  function focusMunicipality(event, feature, city) {
     showTooltip(
       event,
       feature.properties.name,
@@ -555,6 +577,7 @@
     );
   }
 
+  /** Mostra a dica; com o teclado, ela fica no centro do elemento focado. */
   function showTooltip(event, titleText, valueText) {
     ui.tooltip.replaceChildren();
     const title = document.createElement("strong");
@@ -576,6 +599,7 @@
     positionTooltip(event.clientX, event.clientY);
   }
 
+  /** Posiciona a dica dentro do painel do mapa, sem ultrapassar as bordas. */
   function positionTooltip(clientX, clientY) {
     const panel = ui.panel.getBoundingClientRect();
     const tooltip = ui.tooltip.getBoundingClientRect();
@@ -590,6 +614,8 @@
     ui.tooltip.hidden = true;
   }
 
+
+  /** Escolhe singular ou plural conforme a quantidade. */
   function word(value, singular, plural) {
     return value === 1 ? singular : plural;
   }

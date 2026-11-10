@@ -1,3 +1,6 @@
+/* 1. Tema
+   Papel e tinta claros; azul como destaque. Títulos em fonte condensada,
+   texto em sans-serif e números, rótulos e controles em monoespaçada. */
 :root {
   --paper: #f4f1e9;
   --paper-bright: #fbfaf6;
@@ -16,6 +19,9 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+
+/* 2. Base e layout compartilhado
+   Duas colunas: apresentação à esquerda e mapa à direita (uma coluna em telas estreitas). */
 * { box-sizing: border-box; }
 
 html {
@@ -48,6 +54,8 @@ select { font: inherit; }
   min-height: 100dvh;
 }
 
+
+/* 3. Apresentação do projeto */
 .intro {
   z-index: 3;
   display: flex;
@@ -104,9 +112,11 @@ h1 strong {
   text-wrap: pretty;
 }
 
+
+/* 4. Busca */
 .filters {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.2rem;
   margin-top: clamp(2.2rem, 5vh, 3.5rem);
 }
@@ -136,8 +146,7 @@ h1 strong {
   text-transform: none;
 }
 
-.filters input,
-.filters select {
+.filters input {
   width: 100%;
   min-width: 0;
   height: 2.45rem;
@@ -151,12 +160,10 @@ h1 strong {
   font-size: 0.8rem;
 }
 
-.filters select { cursor: pointer; }
 .filters input::placeholder { color: #899397; }
 .filters input[type="search"]::-webkit-search-cancel-button { display: none; }
 
-.filters input:focus,
-.filters select:focus {
+.filters input:focus {
   border-bottom-color: var(--accent);
   box-shadow: 0 1px 0 var(--accent);
 }
@@ -195,6 +202,8 @@ h1 strong {
   outline-offset: 2px;
 }
 
+
+/* 5. Legenda e fonte dos dados */
 .intro__footer {
   display: grid;
   gap: 0.75rem;
@@ -227,15 +236,25 @@ h1 strong {
   border: 1px solid var(--map-line);
 }
 
-.legend__net {
+.legend__bubble {
+  position: relative;
   width: 3.8rem;
-  height: 0.72rem;
-  background-color: var(--map-land);
-  background-image:
-    repeating-linear-gradient(45deg, transparent 0 5px, var(--accent-dark) 5px 5.7px),
-    repeating-linear-gradient(-45deg, transparent 0 5px, var(--accent-dark) 5px 5.7px);
-  border: 1px solid var(--map-line);
+  height: 1.5rem;
 }
+
+.legend__bubble::before,
+.legend__bubble::after {
+  position: absolute;
+  bottom: 0;
+  background: rgba(53, 111, 149, 0.5);
+  border: 1px solid var(--accent-dark);
+  border-radius: 50%;
+  content: "";
+}
+
+.legend__bubble::before { left: 0; width: 0.5rem; height: 0.5rem; }
+.legend__bubble::after { left: 1rem; width: 1.5rem; height: 1.5rem; }
+
 .legend p,
 .source-note { margin: 0; }
 
@@ -247,6 +266,8 @@ h1 strong {
   text-transform: uppercase;
 }
 
+
+/* 6. Painel do mapa, barra de ferramentas e dica de uso */
 .map-panel {
   position: relative;
   min-width: 0;
@@ -337,6 +358,9 @@ h1 strong {
 
 .map-panel.has-sheet #map { transform: translateX(-9%); }
 
+
+/* 7. Estados, bolhas, mapa de calor dos municípios e anotações
+   A cor dos municípios vem da variável --fill, definida pelo JavaScript. */
 .state {
   fill: var(--fill, var(--map-land));
   stroke: var(--map-line);
@@ -370,10 +394,7 @@ h1 strong {
   stroke: var(--map-line);
   stroke-width: 0.5;
   vector-effect: non-scaling-stroke;
-  transition:
-    opacity 180ms ease,
-    filter 150ms ease,
-    stroke 150ms ease;
+  transition: opacity 180ms ease, filter 150ms ease, stroke 150ms ease;
 }
 
 .municipality.has-data { cursor: pointer; }
@@ -389,6 +410,27 @@ h1 strong {
 
 .municipality.is-selected {
   opacity: 1;
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.bubble {
+  fill: var(--accent);
+  fill-opacity: 0.5;
+  stroke: var(--accent-dark);
+  stroke-width: 1;
+  cursor: pointer;
+  outline: none;
+  transition: fill-opacity 150ms ease, opacity 180ms ease;
+}
+
+.bubble:hover,
+.bubble:focus { fill-opacity: 0.78; stroke: var(--ink); }
+
+.bubbles.has-selection .bubble:not(.is-selected) { opacity: 0.35; }
+
+.bubble.is-selected {
+  fill-opacity: 0.85;
   stroke: var(--ink);
   stroke-width: 2;
 }
@@ -432,6 +474,8 @@ h1 strong {
   pointer-events: none;
 }
 
+
+/* 8. Dica flutuante e aviso de filtros sem resultado */
 .tooltip {
   position: absolute;
   z-index: 8;
@@ -478,6 +522,9 @@ h1 strong {
   text-transform: uppercase;
 }
 
+
+/* 9. Painel do município
+   Entra pela direita no desktop e por baixo no celular. */
 .city-sheet {
   position: absolute;
   inset: 0 0 0 auto;
@@ -604,6 +651,8 @@ h1 strong {
   object-fit: contain;
 }
 
+
+/* 10. Acessibilidade e animações */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -621,10 +670,11 @@ h1 strong {
   to { opacity: 1; transform: translateY(0); }
 }
 
+
+/* 11. Adaptação para telas menores */
 @media (max-width: 1020px) {
   .page { grid-template-columns: minmax(330px, 39vw) minmax(0, 1fr); }
   h1 { font-size: clamp(3.4rem, 6.2vw, 5.2rem); }
-  .filters { grid-template-columns: 1fr; }
   .city-sheet { width: min(370px, 64vw); }
 }
 
@@ -640,7 +690,7 @@ h1 strong {
   h1 { font-size: clamp(3.8rem, 15vw, 7rem); }
   h1 strong { font-size: 0.8em; }
   .deck { max-width: 34rem; }
-  .filters { max-width: 38rem; grid-template-columns: 1fr 1fr; }
+  .filters { max-width: 38rem; }
   .intro__footer { margin-top: 3rem; }
   .map-panel,
   #map {
@@ -665,11 +715,12 @@ h1 strong {
 
 @media (max-width: 520px) {
   h1 strong { font-size: 0.78em; }
-  .filters { grid-template-columns: 1fr; }
   .map-toolbar { top: 1.1rem; left: 1rem; }
   .map-hint { left: 1rem; bottom: 1rem; }
 }
 
+
+/* 12. Redução de movimento */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *,
