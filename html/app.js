@@ -387,7 +387,7 @@
     ui.legendText.textContent = selectedFeature ? "Mais jogadores por município" : "Área da bolha = número de jogadores";
     ui.mapHint.textContent = state.loadingUf
       ? "Carregando municípios"
-      : selectedFeature ? "Selecione um município" : "Selecione um estado ou uma bolha";
+      : selectedFeature ? "Selecione um município" : "";
     ui.backState.hidden = !selectedFeature;
     ui.mapDescription.textContent = selectedFeature
       ? "Mapa de calor de " + placeName + " dividido em municípios; a intensidade da cor representa o número de jogadores."

@@ -57,6 +57,7 @@ select { font: inherit; }
 
 /* 3. Apresentação do projeto */
 .intro {
+  position: relative;
   z-index: 3;
   display: flex;
   flex-direction: column;
@@ -66,6 +67,57 @@ select { font: inherit; }
   padding: clamp(2rem, 3.8vw, 4.25rem);
   background: var(--paper);
   border-right: 1px solid var(--rule);
+}
+
+.site-header {
+  position: absolute;
+  top: clamp(1.6rem, 2.8vw, 2.8rem);
+  right: clamp(2rem, 3.8vw, 4.25rem);
+  left: clamp(2rem, 3.8vw, 4.25rem);
+  z-index: 4;
+}
+
+.profile-links {
+  display: flex;
+  gap: 1.35rem;
+  align-items: center;
+}
+
+.profile-links a {
+  position: relative;
+  padding-bottom: 0.22rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.52rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.profile-links a::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: currentColor;
+  content: "";
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 180ms ease;
+}
+
+.profile-links a:hover,
+.profile-links a:focus-visible {
+  color: var(--accent-dark);
+  outline: none;
+}
+
+.profile-links a:hover::after,
+.profile-links a:focus-visible::after {
+  transform: scaleX(1);
+  transform-origin: left;
 }
 
 .intro__content {
@@ -689,7 +741,8 @@ h1 strong {
     border-right: 0;
     border-bottom: 1px solid var(--rule);
   }
-  .intro__content { max-width: none; padding-top: 1.5rem; }
+  .site-header { top: 2rem; right: 1.35rem; left: 1.35rem; }
+  .intro__content { max-width: none; padding-top: 4.5rem; }
   h1 { font-size: clamp(3.8rem, 15vw, 7rem); }
   h1 strong { font-size: 0.8em; }
   .deck { max-width: 34rem; }
